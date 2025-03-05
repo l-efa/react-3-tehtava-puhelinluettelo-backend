@@ -3,6 +3,7 @@ import logger from "morgan";
 import { request } from "http";
 
 const app = express();
+app.use(express.static("dist"));
 
 app.use(express.json());
 logger.token("body", (req) => {
