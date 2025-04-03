@@ -1,9 +1,9 @@
 import express, { response } from "express";
 import logger from "morgan";
-import { request } from "http";
+import PhoneBook from "./mongo.js";
 
 const app = express();
-app.use(express.static("dist"));
+//app.use(express.static("dist"));
 
 app.use(express.json());
 logger.token("body", (req) => {
@@ -12,6 +12,7 @@ logger.token("body", (req) => {
 
 app.use(logger(":method :url :status :body"));
 
+/*
 let phoneNumbers = [
   {
     id: "1",
@@ -37,37 +38,61 @@ let phoneNumbers = [
     number: "39-23-6423122",
   },
 ];
+*/
 
-app.get("/", (request, response) => {
-  response.send("<h1>Hello World!</h1>");
-});
+const errorHandler = (error, request, response, next) => {
+  console.error(error.message);
+
+  if (error.name === "CastError") {
+    return response.status(400).send({ error: "malformatted id" });
+  } else if (error.name === "ValidationError") {
+    return response.status(400).json({ error: error.message });
+  }
+
+  next(error);
+};
 
 app.get("/api/phonenumbers", (request, response) => {
-  response.json(phoneNumbers);
+  PhoneBook.find({}).then((results) => {
+    console.log("results!!!: ", results);
+    response.send(results);
+  });
 });
 
-app.get("/api/phonenumbers/:id", (request, response) => {
+app.get("/api/phonenumbers/:id", (request, response, next) => {
   const id = request.params.id;
-  const phoneNumber = phoneNumbers.find((phoneNumber) => phoneNumber.id === id);
-
-  if (phoneNumber) {
-    response.json(phoneNumber);
-  } else {
-    response.json(404);
-  }
+  PhoneBook.findById(id)
+    .then((results) => {
+      console.log(results);
+      if (results) {
+        response.json(results);
+      } else {
+        response.status(404).end();
+      }
+    })
+    .catch((error) => next(error));
 });
 
-app.get("/info", (request, response) => {
-  const numberOfPhonenumbers = phoneNumbers.length;
-  const d = new Date();
-  response.send(
-    `<p>Phonebook has info for ${numberOfPhonenumbers} people </p> <p>${d}</p>`
-  );
+app.get("/api/info", (request, response) => {
+  let numbers = 0;
+  PhoneBook.find({})
+    .then((results) => {
+      numbers = results.length;
+      console.log("numbers: ", numbers);
+      const d = new Date();
+      response.send(
+        `<p>Phonebook has info for ${numbers} people </p> <p>${d}</p>`
+      );
+    })
+    .catch((error) => {
+      console.log(error, error.name);
+    });
 });
 
-app.post("/api/phonenumbers", (request, response) => {
-  let log;
+app.post("/api/phonenumbers", (request, response, next) => {
   const body = request.body;
+  console.log("body: ", body);
+  let log;
 
   if (!body.name || !body.number) {
     return response.status(400).json({
@@ -75,49 +100,66 @@ app.post("/api/phonenumbers", (request, response) => {
     });
   }
 
-  if (phoneNumbers.find((item) => item.name === body.name)) {
-    return response.status(400).json({
-      error: "name already exists",
-    });
-  }
-
   if (!body.id) {
     const id = String(Math.floor(Math.random() * 1000));
 
-    log = {
+    log = new PhoneBook({
       id: id,
       name: body.name,
       number: body.number,
-    };
+    });
   } else {
-    log = {
+    log = new PhoneBook({
       id: body.id,
       name: body.name,
       number: body.number,
-    };
-  }
-
-  phoneNumbers = phoneNumbers.concat(log);
-
-  response.json(phoneNumbers);
-});
-
-app.delete("/api/phonenumbers/:id", (request, response) => {
-  const index = request.params.id;
-  console.log(index);
-
-  const phonenumber = phoneNumbers.find((number) => number.id == index);
-
-  if (phonenumber) {
-    phoneNumbers = phoneNumbers.filter((item) => {
-      return item.id !== index;
     });
-
-    response.json(phoneNumbers);
-  } else {
-    response.status(404).json({ message: "Phone number not found" });
   }
+
+  console.log("log: ", log);
+
+  log
+    .save()
+    .then((result) => {
+      console.log("log saved to database", log);
+      response.send(result);
+    })
+    .catch((error) => next(error));
 });
+
+app.delete("/api/phonenumbers/:id", (request, response, next) => {
+  const id = request.params.id;
+  console.log(id);
+
+  PhoneBook.findByIdAndDelete(id)
+    .then((result) => {
+      console.log(result);
+      response.status(204).end();
+    })
+    .catch((error) => next(error));
+});
+
+app.put("/api/phonenumbers/:id", (request, response, next) => {
+  const { name, number } = request.body;
+  console.log("serverissä id: ", request.body._id);
+  console.log("params id: ", request.params.id);
+  PhoneBook.findById(request.params.id)
+    .then((bookListing) => {
+      if (!bookListing) {
+        return response.status(404).end();
+      }
+
+      bookListing.name = name;
+      bookListing.number = number;
+
+      return bookListing.save().then((updatedBookListing) => {
+        response.json(updatedBookListing);
+      });
+    })
+    .catch((error) => next(error));
+});
+
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {

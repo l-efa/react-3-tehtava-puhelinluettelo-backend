@@ -1,22 +1,33 @@
+import dotenv from "dotenv";
+dotenv.config();
 import mongoose from "mongoose";
 
-console.log("args length: ", process.argv.length);
-
-let index = 1;
-const password = process.argv[2];
-const url = `mongodb+srv://lefa-atlas:${password}@noteapp.ueu8a.mongodb.net/phonenumberApp`;
-
+const url = process.env.MONGODB_URL;
 mongoose.set("strictQuery", false);
-mongoose.connect(url);
+console.log("connecting to mongodb..");
+
+mongoose
+  .connect(url)
+  .then((result) => {
+    console.log("connected to mongodb");
+  })
+  .catch((error) => {
+    console.log("Error connecting to mongodb", error.message);
+  });
 
 const phoneNumberSchema = new mongoose.Schema({
   id: Number,
-  name: String,
+  name: {
+    type: String,
+    minlength: 3,
+    requierd: true,
+  },
   number: Number,
 });
 
-const PhoneNumberModel = mongoose.model("PhoneNumber", phoneNumberSchema);
+export default mongoose.model("PhoneNumber", phoneNumberSchema);
 
+/*
 if (process.argv.length <= 3) {
   console.log("no params, log all numbers!");
 
@@ -40,4 +51,4 @@ if (process.argv.length <= 3) {
     );
     mongoose.connection.close();
   });
-}
+}*/
